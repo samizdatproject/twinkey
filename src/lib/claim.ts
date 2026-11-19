@@ -43,11 +43,15 @@ export function claimTag(address: string, signature: string, network: Network = 
  * The tags of a new kind 10011 that adds (or replaces) the claim for `address` and keeps everything else the
  * user already had in their list (other platforms, other BCH addresses), so publishing never wipes a profile.
  */
-const sameClaim = (t: string[], name: string | undefined, network: Network) => {
+const sameClaim = (t: string[], name: string | undefined, _network?: Network) => {
   if (t[0] !== 'i' || typeof t[1] !== 'string' || !name) return false;
-  const p = `${PLATFORM[network]}:`;
+  if (t[1] === name) return true;
+  // the network comes from the claim being added ("bch:" or "bchtest:"), so chipnet claims merge correctly too
+  const net = (Object.keys(PLATFORM) as Network[]).find((n) => name.startsWith(`${PLATFORM[n]}:`));
+  if (!net) return false;
+  const p = `${PLATFORM[net]}:`;
   if (!t[1].toLowerCase().startsWith(p)) return false;
-  return identityName(t[1].slice(p.length), network) === name; // any spelling of the same address
+  return identityName(t[1].slice(p.length), net) === name; // any spelling of the same address
 };
 
 export function mergeClaim(existing: Pick<Event, 'tags'> | undefined, tag: string[], network: Network = 'mainnet'): string[][] {
@@ -85,7 +89,11 @@ export function verifyClaims(event: Event, network: Network = 'mainnet'): ClaimR
   const sigOk = true; // checked above
   base.push({ name: 'Nostr signature valid (the Nostr key published this address)', ok: sigOk, detail: npub });
   const prefix = `${PLATFORM[network]}:`;
-  const claims = event.tags.filter((t) => t[0] === 'i' && typeof t[1] === 'string' && t[1].startsWith(prefix)).slice(0, MAX_CLAIMS_CHECKED);
+  const all = event.tags.filter((t) => t[0] === 'i' && typeof t[1] === 'string' && t[1].startsWith(prefix));
+  // canonical spellings first, so junk tags cannot use up the slots of real claims
+  const ordered = [...all.filter((t) => t[1] === identityName(t[1].slice(prefix.length), network)), ...all.filter((t) => t[1] !== identityName(t[1].slice(prefix.length), network))];
+  const claims = ordered.slice(0, MAX_CLAIMS_CHECKED);
+  if (all.length > MAX_CLAIMS_CHECKED) base.push({ name: `List has ${all.length} bch claims; only the first ${MAX_CLAIMS_CHECKED} are checked`, ok: true });
   if (!claims.length) return [{ ok: false, pubkey: event.pubkey, npub, eventId: event.id, createdAt: event.created_at, checks: [...base, { name: 'Contains a bch claim', ok: false }] }];
   return claims.map((t) => {
     const checks = [...base];

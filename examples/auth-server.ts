@@ -34,7 +34,7 @@ createServer(async (req, res) => {
 async function handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) {
   const url = new URL(req.url ?? '/', BASE);
   if (req.method === 'GET' && url.pathname === '/challenge') {
-    if (pending.size >= MAX_PENDING) return json(res, 503, { error: 'busy, try again' });
+    if (pending.size >= MAX_PENDING) pending.delete(pending.keys().next().value!); // evict the oldest (a real server would also rate-limit per IP)
     const c = newChallenge(`${BASE}/login`);
     pending.set(c.nonce, c);
     return json(res, 200, c);

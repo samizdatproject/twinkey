@@ -69,7 +69,7 @@ two-way signature already gives a verifiable binding with no fee and no chain lo
 
 ```sh
 npm install
-npm test                  # 33 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
+npm test                  # 35 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
 npm run dev               # the two pages on http://localhost:5173
 npm run relay             # optional: in-memory relay on ws://127.0.0.1:7447 (put it in the Relays box)
 npm run cli -- verify npub1…            # verify from public relays (or: name@domain, bitcoincash:q…)

@@ -132,3 +132,21 @@ describe('canonical claim strings', () => {
     expect(verifyClaims(ev).length).toBe(MAX_CLAIMS_CHECKED);
   });
 });
+
+describe('review 2 fixes', () => {
+  it('mergeClaim replaces a chipnet claim without being told the network', () => {
+    const key = generatePrivateKey();
+    const sk = generateSecretKey();
+    const addr = addressOf(key, 'chipnet');
+    const sig = signMessage(key, verificationText(getPublicKey(sk)));
+    const tag = claimTag(addr, sig, 'chipnet');
+    const tags = mergeClaim({ tags: [['i', tag[1].toUpperCase().replace('BCHTEST:', 'bchtest:'), 'old'], tag] }, tag);
+    expect(tags).toEqual([tag]);
+  });
+  it('junk claims cannot push a real claim past the check limit', () => {
+    const id = makeIdentity();
+    const junk = Array.from({ length: 40 }, (_, i) => ['i', `bch:QQ${i}`, 'AAAA']);
+    const ev = finalizeEvent(identityTemplate([...junk, claimTag(id.address, id.sig)]), id.nostrKey);
+    expect(verifyClaims(ev).some((r) => r.ok && r.address === id.address)).toBe(true);
+  });
+});
