@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TwinKey: one identity, a Bitcoin Cash key and a Nostr key</title>
+  <meta name="description" content="Link a Bitcoin Cash address and a Nostr key with two signatures. Publish on Nostr relays, discover, verify, pay and log in, with no identity server." />
+  <link rel="stylesheet" href="./src/ui/style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>TwinKey</h1>
+    <p class="tag">One identity, two keys you already own: a <b>Bitcoin Cash</b> address and a <b>Nostr</b> key, each signing for the other. Published on ordinary Nostr relays. No account, no identity server.</p>
+    <nav>
+      <a href="#link">1 · Link</a>
+      <a href="#lookup">2 · Look up &amp; verify</a>
+      <a href="./app.html">3 · Log in to the demo app →</a>
+      <a href="https://github.com/samizdatproject/twinkey">Source &amp; spec</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="link" class="card">
+      <h2>1 · Link your BCH address and your Nostr key</h2>
+
+      <div class="step">
+        <h3>a. Your Nostr key</h3>
+        <p class="muted">Signs the published link. Your key never leaves your extension (or this browser, for a demo key).</p>
+        <div class="row">
+          <button id="nostr-ext">Use my Nostr extension</button>
+          <button id="nostr-demo" class="secondary">Create a demo key</button>
+        </div>
+        <p id="nostr-who" class="who"></p>
+      </div>
+
+      <div class="step">
+        <h3>b. Your Bitcoin Cash key signs this one line</h3>
+        <p class="muted">This is the standard NIP-39 verification text. Signing it with your BCH address proves you control the address <i>and</i> names your Nostr key.</p>
+        <div class="row"><code id="text-to-sign" class="sign-text">Choose a Nostr key first.</code><button id="copy-text" class="small">Copy</button></div>
+        <div class="row">
+          <button id="bch-demo" class="secondary">Sign with a demo BCH key</button>
+          <span class="muted">or sign it in your own wallet (Electron Cash: Tools → Sign/Verify Message; any wallet with "Bitcoin Signed Message") and paste:</span>
+        </div>
+        <div class="grid2">
+          <label>BCH address<input id="bch-address" placeholder="bitcoincash:q…" autocomplete="off" spellcheck="false" /></label>
+          <label>Signature (base64)<input id="bch-sig" placeholder="H… or I…" autocomplete="off" spellcheck="false" /></label>
+        </div>
+        <p id="sig-status" class="status"></p>
+      </div>
+
+      <div class="step">
+        <h3>c. Publish the link to Nostr relays</h3>
+        <p class="muted">A NIP-39 identity list (kind 10011) with one <code>i</code> tag. Anything already in your list is kept.</p>
+        <pre id="preview" class="preview"></pre>
+        <details><summary>Relays</summary><textarea id="relays" rows="4" spellcheck="false"></textarea></details>
+        <div class="row">
+          <button id="publish" disabled>Publish link</button>
+          <button id="unlink" class="secondary" disabled>Unlink this address</button>
+        </div>
+        <div id="publish-status" class="status"></div>
+      </div>
+    </section>
+
+    <section id="lookup" class="card">
+      <h2>2 · Look up and verify anyone</h2>
+      <p class="muted">Enter a Nostr key (npub, hex), a NIP-05 name (name@domain) or a BCH address. This page asks the relays and checks every signature itself.</p>
+      <div class="row">
+        <input id="q" placeholder="npub1… · alice@example.com · bitcoincash:q…" autocomplete="off" spellcheck="false" />
+        <button id="lookup-btn">Look up</button>
+      </div>
+      <div id="lookup-out"></div>
+    </section>
+
+    <section class="card how">
+      <h2>How it works</h2>
+      <ol>
+        <li><b>BCH → Nostr.</b> The BCH key signs <code>Verifying that I control the following Nostr public key: npub…</code> (Bitcoin Signed Message, the format of Electron Cash and Paytaca).</li>
+        <li><b>Nostr → BCH.</b> The Nostr key signs a NIP-39 list containing <code>["i", "bch:q…", "&lt;that signature&gt;"]</code>.</li>
+        <li><b>Discovery.</b> Any Nostr relay stores it. Look up by key (<code>authors</code>) or by address (<code>#i</code> filter).</li>
+        <li><b>Verification.</b> Check the Nostr signature, rebuild the text from the event's own author, recover the address from the BCH signature. No server is trusted; a relay can hide a link but cannot forge one.</li>
+        <li><b>Login.</b> NIP-98 challenge-response with a one-time URL, plus an optional BCH signature over the same nonce.</li>
+      </ol>
+    </section>
+  </main>
+  <footer>MIT · built for BCH BLAZE 2026 (Decentralised Identity bounty) · demo keys live only in this browser: never send funds to a demo address.</footer>
+  <script type="module" src="./src/ui/main.ts"></script>
+</body>
+</html>

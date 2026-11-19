@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Corner Shop: a demo app that accepts TwinKey logins</title>
+  <link rel="stylesheet" href="./src/ui/style.css" />
+</head>
+<body class="app">
+  <header class="top">
+    <h1>Corner Shop <small>(demo app)</small></h1>
+    <p class="tag">An independent app that knows nothing about you. It lets you in with your Nostr key, then finds and checks your linked Bitcoin Cash address on Nostr relays, with no TwinKey server and no identity provider.</p>
+    <nav><a href="./index.html">← Back to TwinKey (link your keys first)</a></nav>
+  </header>
+  <main>
+    <section class="card" id="login-card">
+      <h2>Log in</h2>
+      <ol class="muted">
+        <li>The shop issues a one-time login URL with a random nonce (valid 2 minutes, usable once).</li>
+        <li>Your Nostr key signs it (NIP-98).</li>
+        <li>The shop checks that signature, then looks up your NIP-39 list on relays and verifies the BCH link.</li>
+        <li>Optional step-up: your BCH key signs the same nonce, proving you hold both keys right now.</li>
+      </ol>
+      <label class="check"><input type="checkbox" id="stepup" /> Also ask for a BCH signature (step-up)</label>
+      <div class="row">
+        <button id="login-ext">Log in with my Nostr extension</button>
+        <button id="login-demo" class="secondary">Log in with my TwinKey demo key</button>
+      </div>
+      <div id="challenge" class="status"></div>
+      <div id="stepup-box" hidden>
+        <p>Sign this line with your linked BCH address, then paste the signature:</p>
+        <div class="row"><code id="stepup-text" class="sign-text"></code><button id="stepup-copy" class="small">Copy</button></div>
+        <div class="row"><input id="stepup-sig" placeholder="signature (base64)" spellcheck="false" /><button id="stepup-send">Send</button></div>
+      </div>
+      <div id="login-out"></div>
+    </section>
+    <section class="card" id="session" hidden></section>
+  </main>
+  <footer>The shop's checks run in this page against public relays; the same checks run server-side in <code>examples/auth-server.ts</code>.</footer>
+  <script type="module" src="./src/ui/app.ts"></script>
+</body>
+</html>

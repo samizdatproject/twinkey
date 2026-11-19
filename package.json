@@ -10,7 +10,9 @@
     "build": "tsc -p . && vite build",
     "test": "vitest run",
     "cli": "node --experimental-transform-types --no-warnings src/cli.ts",
-    "auth-server": "node --experimental-transform-types --no-warnings examples/auth-server.ts"
+    "auth-server": "node --experimental-transform-types --no-warnings examples/auth-server.ts",
+    "relay": "node --experimental-transform-types --no-warnings examples/dev-relay.ts",
+    "auth-client": "node --experimental-transform-types --no-warnings examples/auth-client.ts"
   },
   "dependencies": {
     "@bitauth/libauth": "3.0.0",
