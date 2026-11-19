@@ -38,14 +38,29 @@ export class Wizard {
     return encodeCashAddress({ prefix: 'bitcoincash', type: 'p2pkh', payload: hash160(pub) }).address;
   }
 
-  /** Plain (non-token) coins on the first receive and change addresses. */
-  async coins(receive = 10, change = 5): Promise<Coin[]> {
-    const slots: [Child, number][] = [...Array.from({ length: receive }, (_, i) => [0, i] as [Child, number]), ...Array.from({ length: change }, (_, i) => [1, i] as [Child, number])];
-    const found = await Promise.all(slots.map(async ([child, index]) => {
-      const address = this.address(child, index);
-      try { return (await listUnspent(this.call, address)).map((u) => ({ ...u, address, child, index })); } catch { return []; }
-    }));
-    return found.flat();
+  /**
+   * Plain (non-token) coins of the wallet. Standard gap-limit scan: walk each chain (receive, change) in batches
+   * until 20 addresses in a row have never been used; busy wallets (Paytaca) keep money at high address indexes.
+   */
+  async coins(gap = 20, max = 400): Promise<Coin[]> {
+    const out: Coin[] = [];
+    for (const child of [0, 1] as Child[]) {
+      let lastUsed = -1;
+      for (let start = 0; start < max && start <= lastUsed + gap; start += gap) {
+        const batch = Array.from({ length: gap }, (_, k) => start + k);
+        const res = await Promise.all(batch.map(async (index) => {
+          const address = this.address(child, index);
+          try {
+            const hist = (await this.call('blockchain.address.get_history', [address])) as unknown[];
+            if (!hist.length) return { index, used: false, coins: [] as Coin[] };
+            const utxos = await listUnspent(this.call, address);
+            return { index, used: true, coins: utxos.map((u) => ({ ...u, address, child, index })) };
+          } catch { return { index, used: false, coins: [] as Coin[] }; }
+        }));
+        for (const r of res) { if (r.used) lastUsed = Math.max(lastUsed, r.index); out.push(...r.coins); }
+      }
+    }
+    return out;
   }
 
   private async signAndSend(u: UnsignedTx, coins: Coin[], userPrompt: string): Promise<string> {
@@ -66,7 +81,7 @@ export class Wizard {
   /** Link: the wallet spends a coin of one of its addresses in a transaction carrying `text`. */
   async link(text: string): Promise<{ address: string; txid: string }> {
     const coins = await this.coins();
-    if (!coins.length) throw new Error('No coins found in the wallet\'s first addresses. Send it a few thousand sats first.');
+    if (!coins.length) throw new Error('No spendable BCH found in this wallet (token coins are skipped). Send it a few thousand sats first.');
     // the address with the most money becomes the linked address; spend at most its 3 largest coins
     const byAddr = new Map<string, Coin[]>();
     for (const c of coins) byAddr.set(c.address, [...(byAddr.get(c.address) ?? []), c]);
