@@ -12,8 +12,15 @@ import { DEFAULT_RELAYS, discoverByPubkey } from '../src/lib/relays.ts';
 const PORT = Number(process.env.PORT ?? 8788);
 const RELAYS = process.env.RELAYS ? process.env.RELAYS.split(',') : DEFAULT_RELAYS;
 const BASE = process.env.BASE_URL ?? `http://127.0.0.1:${PORT}`;
-const pending = new Map<string, Challenge>(); // nonce → challenge (a real app would expire these)
-const used = new Set<string>();
+const MAX_PENDING = 10_000;
+const pending = new Map<string, Challenge>(); // nonce → challenge
+const used = new Map<string, number>(); // nonce → expiry; kept until the challenge could no longer be valid anyway
+const usedSet = { has: (n: string) => used.has(n), add: (n: string) => { used.set(n, (pending.get(n)?.expiresAt ?? 0) + 60); return usedSet; } } as unknown as Set<string>;
+setInterval(() => {
+  const now = Date.now() / 1000;
+  for (const [n, c] of pending) if (c.expiresAt < now) pending.delete(n);
+  for (const [n, exp] of used) if (exp < now) used.delete(n);
+}, 30_000).unref();
 
 const json = (res: import('node:http').ServerResponse, code: number, body: unknown) => {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -21,8 +28,13 @@ const json = (res: import('node:http').ServerResponse, code: number, body: unkno
 };
 
 createServer(async (req, res) => {
+  try { await handle(req, res); } catch { if (!res.headersSent) json(res, 400, { error: 'bad request' }); }
+}).listen(PORT, '127.0.0.1', () => console.log(`TwinKey auth example on ${BASE} (relays: ${RELAYS.join(', ')})`));
+
+async function handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) {
   const url = new URL(req.url ?? '/', BASE);
   if (req.method === 'GET' && url.pathname === '/challenge') {
+    if (pending.size >= MAX_PENDING) return json(res, 503, { error: 'busy, try again' });
     const c = newChallenge(`${BASE}/login`);
     pending.set(c.nonce, c);
     return json(res, 200, c);
@@ -31,15 +43,15 @@ createServer(async (req, res) => {
     const c = pending.get(url.searchParams.get('nonce') ?? '');
     const event = parseAuthHeader(req.headers.authorization);
     if (!c || !event) return json(res, 401, { error: 'unknown challenge or missing Authorization: Nostr header' });
-    const auth = verifyAuth(event, c, { used });
+    const auth = verifyAuth(event, c, { used: usedSet });
+    pending.delete(c.nonce); // one attempt per challenge, whatever the outcome
     if (!auth.ok) return json(res, 401, { checks: auth.checks });
     const { results } = await discoverByPubkey(auth.pubkey!, 'mainnet', RELAYS);
     const links = results.filter((r) => r.ok);
     if (!links.length) return json(res, 401, { checks: auth.checks, error: 'no valid BCH link on the relays' });
     const bchSig = req.headers['x-bch-signature'];
-    const bothKeys = typeof bchSig === 'string' && links.some((l) => verifyBchStepUp(c, auth.pubkey!, l.address!, bchSig).ok);
-    pending.delete(c.nonce);
-    return json(res, 200, { npub: nip19.npubEncode(auth.pubkey!), bch: links.map((l) => l.address), bothKeys });
+    const signedBy = typeof bchSig === 'string' ? links.find((l) => verifyBchStepUp(c, auth.pubkey!, l.address!, bchSig).ok)?.address : undefined;
+    return json(res, 200, { npub: nip19.npubEncode(auth.pubkey!), bch: links.map((l) => l.address), bothKeys: !!signedBy, bchSignedBy: signedBy ?? null });
   }
   json(res, 404, { error: 'not found' });
-}).listen(PORT, '127.0.0.1', () => console.log(`TwinKey auth example on ${BASE} (relays: ${RELAYS.join(', ')})`));
+}

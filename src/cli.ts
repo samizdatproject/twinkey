@@ -11,7 +11,8 @@ import { didDocument } from './lib/did.ts';
 
 const [cmd, arg, ...rest] = process.argv.slice(2);
 const flag = rest.indexOf('--relays');
-const relays = flag >= 0 ? rest[flag + 1].split(',') : DEFAULT_RELAYS;
+const relays = flag >= 0 ? (rest[flag + 1] ?? '').split(',').filter((r) => /^wss?:\/\//.test(r)) : DEFAULT_RELAYS;
+if (!relays.length) { console.error('--relays needs a comma-separated list of ws:// or wss:// URLs'); process.exit(2); }
 
 async function pubkeyOf(s: string): Promise<string> {
   const hex = toPubkeyHex(s) ?? (s.includes('@') ? (await queryProfile(s))?.pubkey : undefined);

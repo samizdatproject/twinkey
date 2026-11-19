@@ -3,7 +3,7 @@ import { generatePrivateKey } from '@bitauth/libauth';
 import { finalizeEvent, generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import { addressOf, signMessage, stripPrefix } from '../src/lib/bchmsg.ts';
 import {
-  claimTag, identityName, identityTemplate, mergeClaim, removeClaim, toPubkeyHex, verificationText, verifyClaims,
+  MAX_CLAIMS_CHECKED, claimTag, identityName, identityTemplate, mergeClaim, removeClaim, toPubkeyHex, verificationText, verifyClaims,
 } from '../src/lib/claim.ts';
 
 function makeIdentity() {
@@ -103,5 +103,32 @@ describe('cached-verification trap', () => {
     const other = makeIdentity();
     const forged = { ...ev, pubkey: other.pubkey, tags: [claimTag(other.address, other.sig)] };
     expect(verifyClaims(forged)[0].ok).toBe(false);
+  });
+});
+
+describe('canonical claim strings', () => {
+  it('uppercase, prefixed or z-form claim strings do not verify, and unlink removes any spelling', async () => {
+    const id = makeIdentity();
+    const q = stripPrefix(id.address);
+    for (const name of [`bch:${q.toUpperCase()}`, `bch:${id.address}`]) {
+      const ev = finalizeEvent(identityTemplate([['i', name, id.sig]]), id.nostrKey);
+      expect(verifyClaims(ev)[0].ok).toBe(false);
+    }
+    const tags = [['i', `bch:${q.toUpperCase()}`, id.sig], ['i', `bch:${q}`, id.sig], ['i', 'github:x', 'y']];
+    expect(removeClaim({ tags }, id.address)).toEqual([['i', 'github:x', 'y']]);
+    expect(mergeClaim({ tags }, claimTag(id.address, id.sig))).toEqual([['i', 'github:x', 'y'], claimTag(id.address, id.sig)]);
+  });
+
+  it('malformed events are rejected without throwing', () => {
+    for (const bad of [{}, { tags: null }, { kind: 10011, tags: [null], pubkey: 'x' }, null]) {
+      expect(verifyClaims(bad as never)[0].ok).toBe(false);
+    }
+  });
+
+  it('checks at most MAX_CLAIMS_CHECKED claims per list', () => {
+    const id = makeIdentity();
+    const many = Array.from({ length: 500 }, () => ['i', `bch:${stripPrefix(id.address)}`, 'AAAA']);
+    const ev = finalizeEvent(identityTemplate(many), id.nostrKey);
+    expect(verifyClaims(ev).length).toBe(MAX_CLAIMS_CHECKED);
   });
 });

@@ -16,6 +16,7 @@ A Nostr user who controls the Bitcoin Cash P2PKH address `A` adds this tag to th
 - **Platform** `bch` = Bitcoin Cash mainnet (`bchtest` for chipnet/testnet).
 - **Identity** = the cashaddr payload of the P2PKH address, lowercase, without prefix. A token-aware `z…` address is
   written in its `q…` form (same key hash). P2SH addresses cannot be claimed: a message signature proves a key.
+  Verifiers MUST accept only this canonical spelling, so that unlinking and `#i` lookups always match.
 - **Proof** = base64 Bitcoin Signed Message signature by the key of `A` over the exact NIP-39 verification text:
 
   ```
@@ -48,11 +49,25 @@ valid. A claim copied into another user's list fails step 3–4; an edited event
 NIP-01). A verifier that found an event through a `#i` search MUST fetch the author's newest list and require the
 claim to be in it, because unlinking is done by publishing a newer list without the claim.
 
+**What a valid claim proves.** "Whoever controls `A` signed this text naming this Nostr key." Public-key recovery
+means any 65 random bytes recover to *some* address; such a claim is valid but points at an address nobody
+controls, which gains nothing (like grinding a vanity address). Apps that need present control use the step-up (§4).
+
+**Domain separation.** The text is NIP-39's generic one and does not mention Bitcoin Cash. So (a) a user must only
+sign it for a Nostr key they mean to link: signing it on a hostile site that shows an attacker's npub links the
+user's address to that npub; (b) the same signature from the same key could also be presented as a Bitcoin claim.
+Wallets and pages should show the npub clearly before signing. Keeping NIP-39's text is a deliberate interop choice.
+
+**Limits for verifiers.** Check a bounded number of claims per list (TwinKey: 16) and events per relay (200), and
+keep only events that match the query, since relays are untrusted.
+
 ## 3. Discovery
 
 - By Nostr key: `{"kinds":[10011],"authors":[<hex>]}`.
-- By BCH address: `{"kinds":[10011],"#i":["bch:<id>"]}` (relays index single-letter tags), then the newest list of
-  each author found.
+- By BCH address: `{"kinds":[10011],"#i":["bch:<id>"]}` (relays index single-letter tags). Verify each hit first
+  and keep only authors whose hit holds a **valid** claim for the address (anyone can publish junk tags naming an
+  address, nobody can forge the signature, so junk cannot crowd out a real link), then require the claim in each
+  such author's newest list.
 - NIP-05 (`name@domain`) can be used to find the Nostr key first.
 
 Relays are untrusted storage. A relay can withhold an event (query several), but cannot forge one.

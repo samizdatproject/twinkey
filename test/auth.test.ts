@@ -65,3 +65,12 @@ describe('login (NIP-98 challenge-response)', () => {
     expect(parseAuthHeader('Nostr %%%')).toBeUndefined();
   });
 });
+
+describe('malformed login input', () => {
+  it('returns ok:false instead of throwing', () => {
+    const c = newChallenge(APP);
+    for (const bad of [{}, { tags: 'x' }, { kind: 27235, tags: [[ 'u', 5 ]] }, null]) {
+      expect(verifyAuth(bad as never, c, { used: new Set() }).ok).toBe(false);
+    }
+  });
+});

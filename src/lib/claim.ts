@@ -43,15 +43,22 @@ export function claimTag(address: string, signature: string, network: Network = 
  * The tags of a new kind 10011 that adds (or replaces) the claim for `address` and keeps everything else the
  * user already had in their list (other platforms, other BCH addresses), so publishing never wipes a profile.
  */
-export function mergeClaim(existing: Pick<Event, 'tags'> | undefined, tag: string[]): string[][] {
-  const kept = (existing?.tags ?? []).filter((t) => !(t[0] === 'i' && t[1] === tag[1]));
+const sameClaim = (t: string[], name: string | undefined, network: Network) => {
+  if (t[0] !== 'i' || typeof t[1] !== 'string' || !name) return false;
+  const p = `${PLATFORM[network]}:`;
+  if (!t[1].toLowerCase().startsWith(p)) return false;
+  return identityName(t[1].slice(p.length), network) === name; // any spelling of the same address
+};
+
+export function mergeClaim(existing: Pick<Event, 'tags'> | undefined, tag: string[], network: Network = 'mainnet'): string[][] {
+  const kept = (existing?.tags ?? []).filter((t) => !sameClaim(t, tag[1], network));
   return [...kept, tag];
 }
 
 /** The tags without the claim for `address` (unlinking = publishing the list without it). */
 export function removeClaim(existing: Pick<Event, 'tags'> | undefined, address: string, network: Network = 'mainnet'): string[][] {
   const name = identityName(address, network);
-  return (existing?.tags ?? []).filter((t) => !(t[0] === 'i' && t[1] === name));
+  return (existing?.tags ?? []).filter((t) => !sameClaim(t, name, network));
 }
 
 export function identityTemplate(tags: string[][], existing?: Pick<Event, 'created_at'>, now = Date.now()): EventTemplate {
@@ -64,21 +71,28 @@ export function identityTemplate(tags: string[][], existing?: Pick<Event, 'creat
  * Verify every `bch` claim in a kind 10011 event, independently of where the event came from.
  * Rebuilds the signed text from the event's own author, so a claim copied into someone else's list fails.
  */
+export const MAX_CLAIMS_CHECKED = 16; // a list with thousands of bch tags must not cost thousands of key recoveries
+
 export function verifyClaims(event: Event, network: Network = 'mainnet'): ClaimResult[] {
+  if (!event || typeof event !== 'object' || !verifyEventFresh(event)) {
+    const pk = typeof event?.pubkey === 'string' ? event.pubkey : '';
+    return [{ ok: false, pubkey: pk, npub: safeNpub(pk), checks: [{ name: 'Nostr signature valid', ok: false, detail: 'malformed or unsigned event' }] }];
+  }
   const npub = safeNpub(event.pubkey);
   const base: Check[] = [];
   const kindOk = event.kind === IDENTITY_KIND;
   base.push({ name: 'Event is a NIP-39 identity list (kind 10011)', ok: kindOk, detail: `kind ${event.kind}` });
-  let sigOk = false;
-  sigOk = verifyEventFresh(event);
+  const sigOk = true; // checked above
   base.push({ name: 'Nostr signature valid (the Nostr key published this address)', ok: sigOk, detail: npub });
   const prefix = `${PLATFORM[network]}:`;
-  const claims = event.tags.filter((t) => t[0] === 'i' && typeof t[1] === 'string' && t[1].startsWith(prefix));
+  const claims = event.tags.filter((t) => t[0] === 'i' && typeof t[1] === 'string' && t[1].startsWith(prefix)).slice(0, MAX_CLAIMS_CHECKED);
   if (!claims.length) return [{ ok: false, pubkey: event.pubkey, npub, eventId: event.id, createdAt: event.created_at, checks: [...base, { name: 'Contains a bch claim', ok: false }] }];
   return claims.map((t) => {
     const checks = [...base];
-    const address = normalizeAddress(t[1].slice(prefix.length), network);
-    checks.push({ name: 'Claimed value is a P2PKH Bitcoin Cash address', ok: !!address, detail: t[1] });
+    const parsed = normalizeAddress(t[1].slice(prefix.length), network);
+    // only the canonical form counts (lowercase q…, no prefix): otherwise unlinking and #i lookups would miss it
+    const address = parsed && t[1] === identityName(parsed, network) ? parsed : undefined;
+    checks.push({ name: 'Claimed value is a P2PKH Bitcoin Cash address in canonical form (bch:q…)', ok: !!address, detail: t[1] });
     const text = verificationText(event.pubkey);
     const signer = address && typeof t[2] === 'string' ? recoverAddress(text, t[2], network) : undefined;
     checks.push({

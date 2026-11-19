@@ -6,7 +6,7 @@ import { claimTag, identityTemplate, mergeClaim, removeClaim, verificationText, 
 import { discoverByAddress, discoverByPubkey, fetchIdentityList, publish } from '../lib/relays.ts';
 import { didDocument, paymentUri } from '../lib/did.ts';
 import {
-  $, copy, demoBch, demoNostrSigner, el, extensionSigner, getRelays, renderChecks, resolvePubkey, setRelays, short,
+  $, copy, demoBch, demoNostrSigner, el, extensionSigner, forgetDemoKeys, getRelays, renderChecks, resolvePubkey, setRelays, short,
   type NostrSigner,
 } from './common.ts';
 
@@ -29,6 +29,16 @@ $('#nostr-ext').addEventListener('click', async () => {
   try { setSigner(await extensionSigner()); } catch (e) { $('#nostr-who').textContent = String((e as Error).message ?? e); }
 });
 $('#nostr-demo').addEventListener('click', () => setSigner(demoNostrSigner()!));
+$('#forget').addEventListener('click', () => {
+  if (!window.confirm('Delete the demo Nostr and BCH keys stored in this browser? (Unlink first if you published a link.)')) return;
+  forgetDemoKeys();
+  signer = undefined;
+  addrIn.value = '';
+  sigIn.value = '';
+  $('#nostr-who').textContent = 'Demo keys deleted.';
+  $('#text-to-sign').textContent = 'Choose a Nostr key first.';
+  refresh();
+});
 $('#copy-text').addEventListener('click', (e) => signer && copy(verificationText(signer.pubkey), e.currentTarget as HTMLElement));
 $('#bch-demo').addEventListener('click', () => {
   if (!signer) { $('#sig-status').textContent = 'Choose a Nostr key first.'; return; }
@@ -76,7 +86,17 @@ async function publishTags(build: (existing: Awaited<ReturnType<typeof fetchIden
   out.replaceChildren(el('p', {}, 'Fetching your current identity list (so nothing in it is lost)…'));
   try {
     const existing = await fetchIdentityList(signer.pubkey, relays);
-    const ev = await signer.sign(identityTemplate(build(existing), existing));
+    const tags = build(existing);
+    const key = (t: string[]) => `${t[0]} ${t[1]}`;
+    const before = new Set((existing?.tags ?? []).filter((t) => t[0] === 'i').map(key));
+    const after = new Set(tags.filter((t) => t[0] === 'i').map(key));
+    const added = [...after].filter((k) => !before.has(k));
+    const removed = [...before].filter((k) => !after.has(k));
+    const kept = [...after].filter((k) => before.has(k));
+    const summary = [`Your identity list will be replaced with:`, ...added.map((k) => `  + ${k}`), ...removed.map((k) => `  − ${k}`),
+      ...kept.map((k) => `  = ${k}`), existing ? '' : '(no earlier list found on these relays)', 'Sign and publish?'].join('\n');
+    if (!window.confirm(summary)) { out.append(el('p', { class: 'muted' }, 'Cancelled.')); return; }
+    const ev = await signer.sign(identityTemplate(tags, existing));
     out.append(el('p', {}, `Signed event ${short(ev.id, 8)}. Sending to ${relays.length} relays…`));
     const res = await publish(ev, relays);
     out.append(
@@ -105,7 +125,8 @@ $('#unlink').addEventListener('click', () => {
 // ---- look up and verify
 function renderResult(r: ClaimResult): HTMLElement {
   const card = el('div', { class: `result ${r.ok ? 'ok' : 'bad'}` },
-    el('h3', {}, r.ok ? '✓ Verified link' : '✗ Not a valid link'),
+    el('h3', {}, r.ok ? '✓ Verified link' : r.address === undefined && r.checks.some((c) => c.name === 'Contains a bch claim')
+      ? 'No BCH address linked (never linked, or unlinked)' : '✗ Not a valid link'),
     el('p', {}, el('b', {}, 'Nostr: '), el('code', {}, r.npub)),
     r.address ? el('p', {}, el('b', {}, 'BCH: '), el('code', {}, r.address)) : null,
     r.createdAt ? el('p', { class: 'muted' }, `Published ${new Date(r.createdAt * 1000).toLocaleString()} · event ${short(r.eventId ?? '', 8)}`) : null,
@@ -168,4 +189,8 @@ $<HTMLInputElement>('#q').addEventListener('keydown', (e) => { if (e.key === 'En
 const existingDemo = demoNostrSigner(false);
 if (existingDemo) setSigner(existingDemo);
 const params = new URLSearchParams(location.search);
-if (params.get('q')) { $<HTMLInputElement>('#q').value = params.get('q')!; lookup(); }
+const q0 = params.get('q');
+if (q0) {
+  $<HTMLInputElement>('#q').value = q0;
+  if (!q0.includes('@')) lookup(); // a NIP-05 name from a link is only looked up when the user clicks
+}

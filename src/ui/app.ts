@@ -34,10 +34,11 @@ class ShopBackend {
 
   /** Step 2 (optional): the BCH key signs the same nonce. */
   stepUp(nonce: string, pubkey: string, links: ClaimResult[], signature: string): Check {
-    const c = this.pending.get(nonce)!;
+    const c = this.pending.get(nonce);
+    if (!c) return { name: 'BCH key signed this login too', ok: false, detail: 'unknown challenge' };
     for (const l of links) {
       const r = verifyBchStepUp(c, pubkey, l.address!, signature);
-      if (r.ok) return r;
+      if (r.ok) return r; // detail = the address that signed
     }
     return { name: 'BCH key signed this login too (holds both keys now)', ok: false, detail: 'signature not made by a linked address' };
   }
@@ -80,18 +81,18 @@ function finish(res: { pubkey?: string; links: ClaimResult[]; checks: Check[] },
   $('#login-out').replaceChildren(renderChecks(checks));
   if (!check.ok) { $('#login-out').append(el('p', { class: 'bad' }, 'Step-up failed: not logged in.')); return; }
   $('#stepup-box').hidden = true;
-  showSession(res.pubkey!, res.links, checks, true);
+  showSession(res.pubkey!, res.links, checks, true, check.detail);
 }
 
-function showSession(pubkey: string, links: ClaimResult[], _checks: Check[], both: boolean) {
+function showSession(pubkey: string, links: ClaimResult[], _checks: Check[], both: boolean, signedBy?: string) {
   const s = $('#session');
   s.hidden = false;
   s.replaceChildren(
     el('h2', {}, '✓ Welcome back'),
     el('p', {}, 'Signed in as ', el('code', {}, nip19.npubEncode(pubkey))),
-    el('p', {}, 'Your verified BCH address: ', el('code', {}, links[0].address!)),
-    el('p', { class: 'muted' }, both ? 'You proved you hold both keys in this session.' : 'Logged in with your Nostr key; the BCH link was verified from the relays.'),
-    el('p', {}, 'Refunds and loyalty rewards from this shop go to your verified address. No password, no email, no account database.'),
+    el('p', {}, links.length > 1 ? 'Your verified BCH addresses: ' : 'Your verified BCH address: ', ...links.map((l) => el('code', {}, `${l.address} `))),
+    el('p', { class: 'muted' }, both ? `You proved you hold both keys in this session (BCH signature by ${signedBy}).` : 'Logged in with your Nostr key; the BCH link was verified from the relays.'),
+    el('p', {}, 'A real shop could pay refunds or rewards to your verified address. No password, no email, no account database. (Demo keys: never send funds to them.)'),
   );
 }
 

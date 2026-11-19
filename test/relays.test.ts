@@ -54,13 +54,24 @@ describe('publish and discover over relays', () => {
     expect((await discoverByPubkey(id.pub, 'mainnet', [a.url, b.url], 2000)).results.every((r) => !r.ok)).toBe(true);
   });
 
-  it('a forged claim stored on a relay is found but reported as invalid', async () => {
+  it('forged claims on a relay are ignored, and 60 spam keys cannot hide the real link', async () => {
     const victim = identity();
+    await publish(finalizeEvent(identityTemplate([claimTag(victim.address, victim.sig)], undefined, Date.now() - 60_000), victim.sk), [a.url]);
     const thief = identity();
-    const forged = finalizeEvent(identityTemplate([claimTag(victim.address, victim.sig)]), thief.sk);
-    a.inject(forged);
-    const found = await discoverByAddress(victim.address, 'mainnet', [a.url], 2000);
-    expect(found.find((r) => r.pubkey === thief.pub)?.ok).toBe(false);
+    a.inject(finalizeEvent(identityTemplate([claimTag(victim.address, victim.sig)]), thief.sk)); // copied proof
+    for (let i = 0; i < 60; i++) a.inject(finalizeEvent(identityTemplate([claimTag(victim.address, 'AAAA')]), generateSecretKey()));
+    const found = await discoverByAddress(victim.address, 'mainnet', [a.url], 3000);
+    expect(found.map((r) => [r.ok, r.pubkey])).toEqual([[true, victim.pub]]);
+  });
+
+  it('fetchIdentityList ignores other kinds a relay sends back', async () => {
+    const id = identity();
+    const contacts = finalizeEvent({ kind: 3, created_at: Math.floor(Date.now() / 1000) + 100, tags: [['p', 'x'.repeat(64)]], content: '' }, id.sk);
+    const list = finalizeEvent(identityTemplate([['i', 'github:alice', 'g']]), id.sk);
+    a.inject(contacts);
+    a.inject(list);
+    const got = await fetchIdentityList(id.pub, [a.url], 2000);
+    expect(got?.kind).toBe(10011);
   });
 
   it('an unreachable relay does not block the others', async () => {

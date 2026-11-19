@@ -69,7 +69,7 @@ two-way signature already gives a verifiable binding with no fee and no chain lo
 
 ```sh
 npm install
-npm test                  # 26 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
+npm test                  # 31 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
 npm run dev               # the two pages on http://localhost:5173
 npm run relay             # optional: in-memory relay on ws://127.0.0.1:7447 (put it in the Relays box)
 npm run cli -- verify npub1…            # verify from public relays (or: name@domain, bitcoincash:q…)
@@ -107,6 +107,14 @@ npm run build             # static site in dist/
 - **Newest list only.** Discovery by address re-fetches each author's newest list, so an unlinked claim kept by a
   stale relay does not count.
 - **Login.** One-time nonces, exact URL match, 60-second window, nonce marked used only on success.
+- **Independent security review** (AI reviewer, Nov 19): no way found to forge a binding. Fixed from it: spam keys
+  could crowd a real link out of the address lookup (hits are now verified before anything else), non-canonical claim
+  spellings could survive an unlink (only the canonical form verifies now), a relay sending other event kinds could
+  pollute a merge (filtered), the example server could be crashed by a malformed header (hardened, with TTLs and
+  caps), and per-relay/per-list limits. Publishing now shows exactly which `i` tags will be added or removed before
+  signing.
+- **What a claim proves:** "whoever controls this address named this Nostr key". The signed text is NIP-39's generic
+  one (not BCH-specific), so only sign it on a page you trust, for an npub you recognise (SPEC §2).
 - **Limits (honest list):** a proof is a permanent statement; if a Nostr key is stolen, the BCH holder recovers by
   linking a new Nostr key (SPEC §5), and a signed revocation is future work. Relays can withhold data: query several.
   The demo app's "server" runs in the page for the static demo; `examples/auth-server.ts` is the same logic as a real

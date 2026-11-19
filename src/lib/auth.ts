@@ -37,9 +37,10 @@ export interface AuthOptions {
 export function verifyAuth(event: Event, c: Challenge, opts: AuthOptions): { ok: boolean; pubkey?: string; checks: Check[] } {
   const now = Math.floor((opts.now ?? Date.now()) / 1000);
   const skew = opts.maxSkewSec ?? 60;
-  const tag = (n: string) => event.tags.find((t) => t[0] === n)?.[1];
-  let sig = false;
-  sig = verifyEventFresh(event);
+  // verifyEventFresh also validates the event's shape; nothing else is read from a malformed event
+  const sig = !!event && typeof event === 'object' && verifyEventFresh(event);
+  if (!sig) return { ok: false, checks: [{ name: 'Nostr signature valid', ok: false, detail: 'malformed or unsigned event' }] };
+  const tag = (n: string) => { const v = event.tags.find((t) => t[0] === n)?.[1]; return typeof v === 'string' ? v : undefined; };
   const checks: Check[] = [
     { name: 'Login event is NIP-98 (kind 27235)', ok: event.kind === AUTH_KIND },
     { name: 'Nostr signature valid', ok: sig },
