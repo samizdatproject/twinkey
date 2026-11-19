@@ -10,6 +10,19 @@ custody.
 - **Protocol spec:** [SPEC.md](SPEC.md)
 - Built for **BCH BLAZE 2026**, *Decentralized Identity* bounty (Paytaca). New project, all code written during BLAZE (from Nov 19, 2026).
 
+## See a live example
+
+https://samizdatproject.github.io/twinkey/?q=npub1rqz5mdjmm3fkj829ue2gupgqx2kcxgt8p24teffetmqvls5fl2cqamr08g
+shows one Nostr key with two verified BCH links, checked live by your browser:
+
+- a **signed-message** proof (demo key), and
+- an **on-chain** proof made with the **Selene** wallet over WizardConnect: commitment transaction
+  [1f765b72…895f](https://blockchair.com/bitcoin-cash/transaction/1f765b727ee92b10c4c9d2d08439126c5e33bd53634e53dd6dfacd818b00895f)
+  (its OP_RETURN is the NIP-39 line for that npub).
+
+A one-click **payment by identity** from Selene to the verified address:
+[d43469ee…96da](https://blockchair.com/bitcoin-cash/transaction/d43469ee9087e6ffb1c1c42d176ec42f46ad7852f6269ca4bb771562c09596da).
+
 ## Try it in one minute
 
 1. Open the demo. Click **Create a demo key** (or **Use my Nostr extension**, e.g. Alby or nos2x).
@@ -75,7 +88,7 @@ disclosed). Not attempted: verifiable credentials, portable reputation.
 
 ```sh
 npm install
-npm test                  # 38 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
+npm test                  # 39 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
 npm run dev               # the two pages on http://localhost:5173
 npm run relay             # optional: in-memory relay on ws://127.0.0.1:7447 (put it in the Relays box)
 npm run cli -- verify npub1…            # verify from public relays (or: name@domain, bitcoincash:q…)
@@ -129,6 +142,12 @@ npm run build             # static site in dist/
   The demo app's "server" runs in the page for the static demo; `examples/auth-server.ts` is the same logic as a real
   server. WizardConnect has no sign-message action, hence the on-chain proof for those wallets (it costs the network
   fee and spends from one wallet address, which becomes the linked address).
+- **Wallets tested (Nov 19):** Selene over WizardConnect: link (on-chain proof) and payment both worked on mainnet.
+  Paytaca over WizardConnect: our test request stayed pending in the wallet; not yet working in our test. Electron
+  Cash's message format is covered by its own test vectors.
+- **Found in real-wallet testing and fixed:** WizardConnect requests must use the protocol's own encoding (raw
+  bigints broke them), and a wallet's reply can be lost after it broadcasts, so the page also watches the chain for
+  the commitment.
 
 ## How this was built
 
