@@ -13,8 +13,12 @@ custody.
 ## Try it in one minute
 
 1. Open the demo. Click **Create a demo key** (or **Use my Nostr extension**, e.g. Alby or nos2x).
-2. Click **Sign with a demo BCH key**, or sign the shown line in your own wallet (Electron Cash: *Tools → Sign/Verify
-   Message*) and paste your address and signature. The page checks the signature live.
+2. Prove your BCH address, one of three ways:
+   - **Link with Paytaca / Selene (WizardConnect):** scan the QR; your wallet approves a tiny transaction from one of
+     its addresses carrying the line (OP_RETURN, ~300 sats fee). The proof is that transaction.
+   - **Sign with a demo BCH key** (instant, no wallet).
+   - **Sign the line in Electron Cash** (*Tools → Sign/Verify Message*) and paste address and signature.
+   The page checks the proof before you publish.
 3. Click **Publish link**. It goes to public Nostr relays as your NIP-39 list (anything already in it is kept).
 4. In **Look up & verify**, enter your npub, a NIP-05 name or the BCH address. Every check is shown, plus a payment
    QR for the verified address and a DID view.
@@ -35,7 +39,8 @@ Demo keys are real keys kept in your browser's local storage. Never send funds t
  Verifier: Nostr signature ✓ · rebuild text from the event author ✓ · recover BCH address from signature ✓
 ```
 
-1. **Binding.** The BCH key signs NIP-39's own verification text, which names the Nostr key. The Nostr key signs
+1. **Binding.** The BCH key signs NIP-39's own verification text, which names the Nostr key: as a signed message, or
+   (for WizardConnect wallets, which cannot sign messages) inside a transaction's OP_RETURN, verified with the BCH VM. The Nostr key signs
    the event that carries the BCH address and that signature. Two different keys (ECDSA and Schnorr), neither
    revealed, each signing for the other. A BCH address merely pasted into a profile would fail.
 2. **Discovery.** By Nostr key (`authors`) or by BCH address (`#i` tag filter), on any relays. NIP-05 names work
@@ -58,18 +63,19 @@ Full rules, including rotation and unlinking: [SPEC.md](SPEC.md).
 | 4. Independent verification + challenge-response auth | `verifyClaims` (browser and Node), CLI, demo app, NIP-98 server example (`src/lib/auth.ts`, `examples/auth-server.ts`). |
 | 5. Working demo, source, setup, architecture docs | This repo, the live pages, this README, SPEC.md. |
 
-Stretch goals touched: **identity-based payments** (pay a verified identity by npub/NIP-05, BIP21 + QR),
+Stretch goals touched: **identity-based payments** (pay a verified identity by npub/NIP-05: one click with a
+WizardConnect wallet, or BIP21 link + QR), **BCH-backed identity commitments** (the on-chain proof: works with
+WizardConnect wallets that cannot sign messages, and timestamps the link on chain),
 **key rotation and recovery** (SPEC §5: either key can be replaced while the other carries continuity),
 **interoperability** (built on NIP-39/NIP-98 and the standard BCH message format, reusable library, CLI, spec, a DID
 view with `did:nostr` and `did:pkh`), **privacy** (link a fresh address rather than your main wallet; nothing else is
-disclosed). Not attempted: verifiable credentials, portable reputation, on-chain commitments (an off-chain
-two-way signature already gives a verifiable binding with no fee and no chain lookup).
+disclosed). Not attempted: verifiable credentials, portable reputation.
 
 ## Run it yourself
 
 ```sh
 npm install
-npm test                  # 35 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
+npm test                  # 38 tests: Electron Cash vectors, Paytaca signer cross-check, forgery cases, relays, login
 npm run dev               # the two pages on http://localhost:5173
 npm run relay             # optional: in-memory relay on ws://127.0.0.1:7447 (put it in the Relays box)
 npm run cli -- verify npub1…            # verify from public relays (or: name@domain, bitcoincash:q…)
@@ -89,6 +95,8 @@ npm run build             # static site in dist/
 | `src/lib/relays.ts` | Relay queries, discovery by key and by address, publish |
 | `src/lib/auth.ts` | NIP-98 challenge, verification, replay set, BCH step-up |
 | `src/lib/did.ts` | DID view and payment URIs |
+| `src/lib/txproof.ts`, `src/lib/electrum.ts` | On-chain proof: build the commitment, verify with the BCH VM over txid-checked data from Electrum servers; payments |
+| `src/ui/wizard.ts` | WizardConnect pairing, linking and paying |
 | `src/lib/verify-event.ts` | Verifies a clean copy of each event (see Security) |
 | `src/ui/` | The two pages |
 | `src/cli.ts`, `examples/` | CLI verifier, Node login server and client, dev relay |
@@ -119,8 +127,8 @@ npm run build             # static site in dist/
 - **Limits (honest list):** a proof is a permanent statement; if a Nostr key is stolen, the BCH holder recovers by
   linking a new Nostr key (SPEC §5), and a signed revocation is future work. Relays can withhold data: query several.
   The demo app's "server" runs in the page for the static demo; `examples/auth-server.ts` is the same logic as a real
-  server. WizardConnect has no sign-message action yet, so own-wallet signing is copy-paste (Electron Cash and other
-  message-signing wallets); WalletConnect `bch_signMessage` would remove that step.
+  server. WizardConnect has no sign-message action, hence the on-chain proof for those wallets (it costs the network
+  fee and spends from one wallet address, which becomes the linked address).
 
 ## How this was built
 

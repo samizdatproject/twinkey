@@ -28,6 +28,18 @@ A Nostr user who controls the Bitcoin Cash P2PKH address `A` adds this tag to th
   compactSize(len) ‖ utf8(text)))`. Signature: `header ‖ r ‖ s` (65 bytes), header `27 + recid` for an uncompressed
   key, `31 + recid` for a compressed key.
 
+**Alternative proof: on-chain commitment** (for wallets that sign transactions but not messages, e.g. WizardConnect
+wallets such as Paytaca and Selene). Proof = `tx:<txid>` (64 lowercase hex). The transaction must:
+
+- have an output whose locking bytecode is exactly `OP_RETURN <push of the UTF-8 verification text>`, and
+- spend at least one P2PKH output locked to `A`.
+
+Verify by fetching the transaction and every output it spends from any Bitcoin Cash node or Electrum server, checking
+that each fetched transaction hashes to its txid (so the server cannot substitute data), and running the BCH virtual
+machine on all inputs. A valid spend of `A`'s coin means the key of `A` signed a transaction naming this Nostr key.
+The commitment is timestamped by the chain and costs only the network fee (~300 sats). Confirmation is not required
+for validity: the signature is the proof.
+
 The list is a replaceable event: publishers MUST fetch their current kind `10011` and keep its other tags (other
 platforms, other addresses), and MUST give the new event a `created_at` greater than the one it replaces.
 
@@ -41,7 +53,7 @@ Given a kind `10011` event `E` (from any relay, any cache, any file):
 3. Rebuild the text from **`E.pubkey`** (never from a string supplied with the claim):
    `Verifying that I control the following Nostr public key: ` + `npub(E.pubkey)`.
 4. Recover the public key from `proof` over that text (compressed if header ≥ 31), hash160 it, encode as P2PKH
-   cashaddr. It MUST equal the claimed address.
+   cashaddr. It MUST equal the claimed address. (For a `tx:` proof, verify the transaction as described in §1.)
 
 If all hold, the BCH key holder named this Nostr key, and this Nostr key published this address: the binding is
 valid. A claim copied into another user's list fails step 3–4; an edited event fails step 1.
@@ -110,5 +122,6 @@ and the app checks it recovers to one of the user's verified addresses.
   (CAIP-2 chain id of Bitcoin Cash; CAIP-10 account ids exclude ':', so the cashaddr prefix is dropped).
 - Payments: a wallet resolving a Nostr user to a BCH address SHOULD use only an address from a verified claim
   (BIP21 `bitcoincash:<address>?amount=…`).
-- Wallet support needed: "sign message" with a P2PKH key (Electron Cash today; Paytaca and Cashonize via WalletConnect; mainnet-js). WalletConnect
+- Wallet support needed: either "sign message" with a P2PKH key (Electron Cash; Paytaca and Cashonize via WalletConnect;
+  mainnet-js), or "sign transaction" (WizardConnect: Paytaca, Selene) for the on-chain proof. WalletConnect
   `bch_signMessage` can produce the proof without copy-paste.

@@ -39,12 +39,18 @@
         <p class="muted">This is the standard NIP-39 verification text. Signing it with your BCH address proves you control the address <i>and</i> names your Nostr key. Only sign it for an npub you recognise as yours.</p>
         <div class="row"><code id="text-to-sign" class="sign-text">Choose a Nostr key first.</code><button id="copy-text" class="small">Copy</button></div>
         <div class="row">
+          <button id="bch-wizard">Link with Paytaca / Selene (WizardConnect)</button>
           <button id="bch-demo" class="secondary">Sign with a demo BCH key</button>
-          <span class="muted">or sign it in your own wallet (Electron Cash: Tools → Sign/Verify Message; any wallet with "Bitcoin Signed Message") and paste:</span>
         </div>
+        <div id="wizard-box" class="wizard" hidden>
+          <p id="wizard-status" class="status"></p>
+          <div id="wizard-qr" class="qr"></div>
+          <p><a id="wizard-link" href="#">Open my wallet app</a> <span class="muted">(on this phone)</span></p>
+        </div>
+        <p class="muted small">WizardConnect wallets cannot sign messages, so your wallet approves a tiny transaction from one of its addresses that carries the line above (an OP_RETURN; you pay only the network fee, about 300 sats). The link then points to that transaction. Or sign the line in a wallet that signs messages (Electron Cash: Tools → Sign/Verify Message) and paste:</p>
         <div class="grid2">
           <label>BCH address<input id="bch-address" placeholder="bitcoincash:q…" autocomplete="off" spellcheck="false" /></label>
-          <label>Signature (base64)<input id="bch-sig" placeholder="H… or I…" autocomplete="off" spellcheck="false" /></label>
+          <label>Signature (base64) or tx:&lt;txid&gt;<input id="bch-sig" placeholder="H… / I… / tx:…" autocomplete="off" spellcheck="false" /></label>
         </div>
         <p id="sig-status" class="status"></p>
       </div>

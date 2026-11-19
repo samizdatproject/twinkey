@@ -3,7 +3,9 @@ import qrcode from 'qrcode-generator';
 import { nip19 } from 'nostr-tools';
 import { normalizeAddress, recoverAddress } from '../lib/bchmsg.ts';
 import { claimTag, identityTemplate, mergeClaim, removeClaim, verificationText, type ClaimResult } from '../lib/claim.ts';
-import { discoverByAddress, discoverByPubkey, fetchIdentityList, publish } from '../lib/relays.ts';
+import { defaultFetchTx, discoverByAddress, discoverByPubkey, fetchIdentityList, publish } from '../lib/relays.ts';
+import { isTxProof, verifyTxProof } from '../lib/txproof.ts';
+import { Wizard } from './wizard.ts';
 import { didDocument, paymentUri } from '../lib/did.ts';
 import {
   $, copy, demoBch, demoNostrSigner, el, extensionSigner, forgetDemoKeys, getRelays, renderChecks, resolvePubkey, setRelays, short,
@@ -11,6 +13,27 @@ import {
 } from './common.ts';
 
 let signer: NostrSigner | undefined;
+let wizard: Wizard | undefined;
+/** On-chain proofs are checked online; the result is cached per (npub, address, proof). */
+const txChecked = new Map<string, boolean | 'checking'>();
+
+async function getWizard(status: (s: string) => void): Promise<Wizard> {
+  if (wizard) return wizard;
+  const box = $('#wizard-box');
+  box.hidden = false;
+  status('Scan with Paytaca or Selene (WizardConnect), or open your wallet on this phone…');
+  wizard = await Wizard.connect((qrUri, uri) => {
+    const qr = qrcode(0, 'L');
+    qr.addData(qrUri);
+    qr.make();
+    $('#wizard-qr').innerHTML = qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true }); // SVG generated locally
+    $<HTMLAnchorElement>('#wizard-link').href = uri;
+  });
+  $('#wizard-qr').replaceChildren();
+  $<HTMLAnchorElement>('#wizard-link').parentElement!.hidden = true;
+  status(`Connected to ${wizard.walletName}.`);
+  return wizard;
+}
 
 const addrIn = $<HTMLInputElement>('#bch-address');
 const sigIn = $<HTMLInputElement>('#bch-sig');
@@ -47,6 +70,26 @@ $('#bch-demo').addEventListener('click', () => {
   sigIn.value = w.sign(verificationText(signer.pubkey));
   refresh();
 });
+$('#bch-wizard').addEventListener('click', async () => {
+  if (!signer) { $('#sig-status').textContent = 'Choose a Nostr key first.'; return; }
+  const st = $('#wizard-status');
+  const status = (s: string) => { st.textContent = s; };
+  try {
+    const w = await getWizard(status);
+    status(`Looking for coins in ${w.walletName}…`);
+    const text = verificationText(signer.pubkey);
+    status('Approve the transaction in your wallet (it only pays the network fee)…');
+    const { address, txid } = await w.link(text);
+    addrIn.value = address;
+    sigIn.value = `tx:${txid}`;
+    txChecked.set(`${signer.pubkey}|${address}|tx:${txid}`, true);
+    status(`✓ Sent: transaction ${short(txid, 8)} links ${address}. Now publish below.`);
+    refresh();
+  } catch (e) {
+    status(`✗ ${(e as Error).message ?? e}`);
+    if (/connect|disconnect/i.test(String((e as Error).message))) wizard = undefined;
+  }
+});
 addrIn.addEventListener('input', refresh);
 sigIn.addEventListener('input', refresh);
 
@@ -59,6 +102,20 @@ function currentClaim(): string[] | undefined {
   if (!addrIn.value.trim()) { status.textContent = ''; return undefined; }
   if (!address) { status.textContent = 'Not a Bitcoin Cash P2PKH address (bitcoincash:q… or z…).'; status.classList.add('bad'); return undefined; }
   if (!sigIn.value.trim()) { status.textContent = 'Paste the signature from your wallet.'; return undefined; }
+  const proof = sigIn.value.trim();
+  if (proof.startsWith('tx:')) {
+    if (!isTxProof(proof)) { status.textContent = 'An on-chain proof looks like tx:<64 hex characters>.'; status.classList.add('bad'); return undefined; }
+    const key = `${signer.pubkey}|${address}|${proof}`;
+    const state = txChecked.get(key);
+    if (state === true) { status.textContent = `✓ On-chain proof valid: ${address} signed a transaction naming your Nostr key.`; status.classList.add('ok'); return claimTag(address, proof); }
+    if (state === false) { status.textContent = 'That transaction does not prove this address named your Nostr key.'; status.classList.add('bad'); return undefined; }
+    if (state === undefined) {
+      txChecked.set(key, 'checking');
+      verifyTxProof(proof, address, verificationText(signer.pubkey), defaultFetchTx).then((c) => { txChecked.set(key, c.ok); refresh(); });
+    }
+    status.textContent = 'Checking the transaction on the BCH network…';
+    return undefined;
+  }
   const signer_ = recoverAddress(verificationText(signer.pubkey), sigIn.value);
   if (signer_ !== address) {
     status.textContent = signer_ ? `This signature was made by ${signer_}, not ${address}.` : 'This is not a valid Bitcoin signed message signature.';
@@ -129,7 +186,7 @@ function renderResult(r: ClaimResult): HTMLElement {
       ? 'No BCH address linked (never linked, or unlinked)' : '✗ Not a valid link'),
     el('p', {}, el('b', {}, 'Nostr: '), el('code', {}, r.npub)),
     r.address ? el('p', {}, el('b', {}, 'BCH: '), el('code', {}, r.address)) : null,
-    r.createdAt ? el('p', { class: 'muted' }, `Published ${new Date(r.createdAt * 1000).toLocaleString()} · event ${short(r.eventId ?? '', 8)}`) : null,
+    r.createdAt ? el('p', { class: 'muted' }, `Published ${new Date(r.createdAt * 1000).toLocaleString()} · event ${short(r.eventId ?? '', 8)} · proof: ${r.proofType === 'tx' ? 'on-chain transaction' : 'signed message'}`) : null,
     renderChecks(r.checks));
   if (r.ok && r.address) {
     const address = r.address;
@@ -147,10 +204,22 @@ function renderResult(r: ClaimResult): HTMLElement {
     };
     amount.addEventListener('input', draw);
     draw();
+    const payStatus = el('p', { class: 'status' });
+    const payBtn = el('button', { class: 'small', onclick: async () => {
+      const bch = Number(amount.value);
+      if (!(bch > 0)) { payStatus.textContent = 'Enter an amount first.'; return; }
+      const sats = BigInt(Math.round(bch * 1e8));
+      try {
+        const w = await getWizard((s) => { payStatus.textContent = s; });
+        payStatus.textContent = 'Approve the payment in your wallet…';
+        const txid = await w.pay(address, sats);
+        payStatus.replaceChildren('✓ Paid: ', el('a', { href: `https://blockchair.com/bitcoin-cash/transaction/${txid}`, target: '_blank', rel: 'noopener' }, short(txid, 10)));
+      } catch (e) { payStatus.textContent = `✗ ${(e as Error).message ?? e}`; }
+    } }, 'Pay with WizardConnect');
     card.append(
       el('div', { class: 'pay' }, el('h4', {}, 'Pay this identity'),
         el('p', { class: 'muted' }, 'The address comes from the verified link, not from anything the payee typed.'),
-        el('div', { class: 'row' }, amount, link), qrBox),
+        el('div', { class: 'row' }, amount, payBtn, link), payStatus, qrBox),
       el('details', {}, el('summary', {}, 'DID document (did:nostr + did:pkh)'),
         el('pre', { class: 'preview' }, JSON.stringify(didDocument(r.pubkey, address), null, 2))),
     );
