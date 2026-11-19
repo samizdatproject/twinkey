@@ -105,3 +105,18 @@ describe('on-chain proof (WizardConnect wallets)', () => {
     void hexToBin;
   });
 });
+
+describe('WizardConnect request encoding', () => {
+  it('is JSON-serialisable and decodes back to the same transaction (the bug a real Paytaca test found)', async () => {
+    const { wizardSignRequest } = await import('../src/lib/wcrequest.ts');
+    const { parseExtendedJson } = await import('@wizardconnect/core');
+    const s = setup();
+    const u = buildCommitment(s.address, [{ txid: s.fund.txid, vout: 0, satoshis: 5000n, height: 1 }], verificationText(s.pubkey));
+    expect(() => JSON.stringify(u.sourceOutputs)).toThrow(/BigInt/); // what we used to send
+    const req = wizardSignRequest(u, 'test');
+    const json = JSON.stringify(req);
+    const back = parseExtendedJson(json);
+    expect(back.transaction).toBe(binToHex(encodeTransaction(u.transaction)));
+    expect(BigInt(back.sourceOutputs[0].valueSatoshis)).toBe(5000n);
+  });
+});

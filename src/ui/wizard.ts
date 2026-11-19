@@ -2,6 +2,7 @@
 // ask it to sign transactions. Used for the on-chain link proof and for "pay this identity".
 import { initiateDappRelay, type DappRelayResult } from '@wizardconnect/core';
 import { DappConnectionManager } from '@wizardconnect/dapp';
+import { wizardSignRequest } from '../lib/wcrequest.ts';
 import { encodeCashAddress, hash160 } from '@bitauth/libauth';
 import { broadcast, electrum, listUnspent, type ElectrumCall, type Utxo } from '../lib/electrum.ts';
 import { buildCommitment, buildPayment, txidOf, type UnsignedTx } from '../lib/txproof.ts';
@@ -48,9 +49,9 @@ export class Wizard {
   private async signAndSend(u: UnsignedTx, coins: Coin[], userPrompt: string): Promise<string> {
     const inputPaths = coins.map((c, i) => [i, PATH[c.child], c.index] as [number, string, number]);
     const res = await this.mgr.signTransaction({
-      transaction: { transaction: u.transaction, sourceOutputs: u.sourceOutputs, broadcast: true, userPrompt },
+      transaction: wizardSignRequest(u, userPrompt) as never, // relay-safe encoding (see wcrequest.ts)
       inputPaths,
-    });
+    }, { signal: AbortSignal.timeout(180_000) }); // a request nobody answers is cancelled in the wallet too
     if (res.error || !res.signedTransaction) throw new Error(res.error || 'The wallet did not sign.');
     const hex = res.signedTransaction;
     // the wallet broadcasts too; sending it again is harmless and covers wallets that don't
