@@ -5,7 +5,9 @@ import { DappConnectionManager } from '@wizardconnect/dapp';
 import { wizardSignRequest } from '../lib/wcrequest.ts';
 import { encodeCashAddress, hash160 } from '@bitauth/libauth';
 import { broadcast, electrum, listUnspent, type ElectrumCall, type Utxo } from '../lib/electrum.ts';
-import { buildCommitment, buildPayment, txidOf, type UnsignedTx } from '../lib/txproof.ts';
+import { binToHex, decodeTransaction, hexToBin } from '@bitauth/libauth';
+import { getTransactionHex } from '../lib/electrum.ts';
+import { buildCommitment, buildPayment, commitmentBytecode, txidOf, type UnsignedTx } from '../lib/txproof.ts';
 
 const PATH = { 0: 'receive', 1: 'change' } as const;
 type Child = 0 | 1;
@@ -71,8 +73,40 @@ export class Wizard {
     const [address, own] = [...byAddr.entries()].sort((a, b) => Number(sum(b[1]) - sum(a[1])))[0];
     const use = own.sort((a, b) => (b.satoshis > a.satoshis ? 1 : -1)).slice(0, 3);
     const u = buildCommitment(address, use, text);
-    const txid = await this.signAndSend(u, use, 'TwinKey: link this address to your Nostr key (OP_RETURN, fee only)');
-    return { address, txid };
+    // Wallets broadcast the transaction themselves; if their reply to the page is lost, the chain still shows it.
+    // So race the wallet's answer against a watcher looking for the commitment on this address.
+    const stop = new AbortController();
+    const seen = new Set(((await this.call('blockchain.address.get_history', [address]).catch(() => [])) as { tx_hash: string }[]).map((h) => h.tx_hash));
+    const fromWallet = this.signAndSend(u, use, 'TwinKey: link this address to your Nostr key (OP_RETURN, fee only)');
+    const fromChain = this.watchCommitment(address, text, seen, stop.signal);
+    try {
+      const txid = await Promise.any([fromWallet, fromChain]);
+      return { address, txid };
+    } catch (e) {
+      throw (e as AggregateError).errors?.[0] ?? e;
+    } finally {
+      stop.abort();
+    }
+  }
+
+  /** Poll the address history for a new transaction carrying `text` in an OP_RETURN. */
+  private async watchCommitment(address: string, text: string, seen: Set<string>, signal: AbortSignal): Promise<string> {
+    const want = binToHex(commitmentBytecode(text));
+    const deadline = Date.now() + 180_000;
+    while (!signal.aborted && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
+      try {
+        const hist = (await this.call('blockchain.address.get_history', [address])) as { tx_hash: string }[];
+        for (const h of hist) {
+          if (seen.has(h.tx_hash)) continue;
+          seen.add(h.tx_hash);
+          const hex = await getTransactionHex(this.call, h.tx_hash);
+          const tx = decodeTransaction(hexToBin(hex));
+          if (typeof tx !== 'string' && txidOf(hex) === h.tx_hash && tx.outputs.some((o) => binToHex(o.lockingBytecode) === want)) return h.tx_hash;
+        }
+      } catch { /* keep polling */ }
+    }
+    throw new Error('No linking transaction seen on the network.');
   }
 
   /** Pay `amount` sats to `to`, change to the wallet's first change address. */
