@@ -3,7 +3,8 @@
 Status: proposal, version 1. Built on [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md),
 [NIP-39](https://github.com/nostr-protocol/nips/blob/master/39.md) (external identities, kind `10011`) and
 [NIP-98](https://github.com/nostr-protocol/nips/blob/master/98.md) (HTTP auth). Nothing new on the BCH side:
-signatures use the Bitcoin Signed Message format that Electron Cash, mainnet-js and Paytaca already produce.
+signatures use the Bitcoin Signed Message format of Electron Cash's *Sign Message*, mainnet-js, and the signer inside
+the Paytaca app (which Paytaca exposes to dapps through WalletConnect).
 
 ## 1. Claim
 
@@ -66,8 +67,10 @@ keep only events that match the query, since relays are untrusted.
 - By Nostr key: `{"kinds":[10011],"authors":[<hex>]}`.
 - By BCH address: `{"kinds":[10011],"#i":["bch:<id>"]}` (relays index single-letter tags). Verify each hit first
   and keep only authors whose hit holds a **valid** claim for the address (anyone can publish junk tags naming an
-  address, nobody can forge the signature, so junk cannot crowd out a real link), then require the claim in each
-  such author's newest list.
+  address, but nobody can forge the signature, so junk never displaces a real link from the results), then require
+  the claim in each such author's newest list. Limit: a verifier that caps events per relay can still have a real
+  link pushed out of one relay's answer by a large flood of junk events; querying several relays helps, and lookup by
+  Nostr key is not affected.
 - NIP-05 (`name@domain`) can be used to find the Nostr key first.
 
 Relays are untrusted storage. A relay can withhold an event (query several), but cannot forge one.
@@ -103,9 +106,9 @@ and the app checks it recovers to one of the user's verified addresses.
 
 ## 6. Interop
 
-- DID view: `did:nostr:<hex>` with `alsoKnownAs` `did:pkh:bip122:000000000000000000651ef99cb9fcbe:<cashaddr>`
-  (CAIP-2 chain id of Bitcoin Cash).
+- DID view: `did:nostr:<hex>` with `alsoKnownAs` `did:pkh:bip122:000000000000000000651ef99cb9fcbe:<q… address>`
+  (CAIP-2 chain id of Bitcoin Cash; CAIP-10 account ids exclude ':', so the cashaddr prefix is dropped).
 - Payments: a wallet resolving a Nostr user to a BCH address SHOULD use only an address from a verified claim
   (BIP21 `bitcoincash:<address>?amount=…`).
-- Wallet support needed: "sign message" with a P2PKH key (Electron Cash, Paytaca's signer, mainnet-js). WalletConnect
+- Wallet support needed: "sign message" with a P2PKH key (Electron Cash today; Paytaca and Cashonize via WalletConnect; mainnet-js). WalletConnect
   `bch_signMessage` can produce the proof without copy-paste.

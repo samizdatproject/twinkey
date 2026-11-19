@@ -1,5 +1,6 @@
 // Interop helpers: a W3C DID view of a verified binding, and identity-based payment requests.
 import { nip19 } from 'nostr-tools';
+import { stripPrefix } from './bchmsg.ts';
 
 /** CAIP-2 chain id of Bitcoin Cash mainnet (ChainAgnostic namespaces, bip122: first BCH block 478559). */
 export const BCH_CAIP2 = 'bip122:000000000000000000651ef99cb9fcbe';
@@ -10,7 +11,9 @@ export const BCH_CAIP2 = 'bip122:000000000000000000651ef99cb9fcbe';
  */
 export function didDocument(pubkeyHex: string, address: string) {
   const nostr = `did:nostr:${pubkeyHex}`;
-  const pkh = `did:pkh:${BCH_CAIP2}:${address}`;
+  // CAIP-10 account addresses may not contain ':', so the cashaddr goes in without its "bitcoincash:" prefix
+  const account = `${BCH_CAIP2}:${stripPrefix(address)}`;
+  const pkh = `did:pkh:${account}`;
   return {
     '@context': ['https://www.w3.org/ns/did/v1'],
     id: nostr,
@@ -24,7 +27,7 @@ export function didDocument(pubkeyHex: string, address: string) {
       id: `${nostr}#bch-address`,
       type: 'BlockchainVerificationMethod2021',
       controller: nostr,
-      blockchainAccountId: `${BCH_CAIP2}:${address}`,
+      blockchainAccountId: account,
     }],
     authentication: [`${nostr}#nostr-key`],
     assertionMethod: [`${nostr}#nostr-key`, `${nostr}#bch-address`],
