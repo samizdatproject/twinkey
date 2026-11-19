@@ -5,7 +5,8 @@ import { verifyEventFresh } from './verify-event.ts';
 import { IDENTITY_KIND, identityName, verifyClaims, type ClaimResult } from './claim.ts';
 import type { Network } from './bchmsg.ts';
 
-export const DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.nostr.band'];
+// Tested Nov 19, 2026: all of these store kind 10011 and answer `#i` lookups (damus was unreachable from our network).
+export const DEFAULT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://relay.nostr.net', 'wss://offchain.pub', 'wss://relay.damus.io'];
 
 /** All events matching `filter` from the given relays (deduplicated, signature-checked). */
 export const MAX_EVENTS_PER_RELAY = 200;
