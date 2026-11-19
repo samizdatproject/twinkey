@@ -2,7 +2,13 @@
 // event a relay returns is verified locally (a relay can hide data, but it cannot forge a binding).
 import type { Event, Filter } from 'nostr-tools';
 import { verifyEventFresh } from './verify-event.ts';
-import { IDENTITY_KIND, identityName, verifyClaims, type ClaimResult } from './claim.ts';
+import { IDENTITY_KIND, identityName, verifyClaims, verifyClaimsOnline, type ClaimResult } from './claim.ts';
+import { electrum } from './electrum.ts';
+import { fetchFrom, type FetchTx } from './txproof.ts';
+
+let defaultFetch: FetchTx | undefined;
+/** Fetches transactions for on-chain proofs from public Electrum servers (created on first use). */
+export const defaultFetchTx: FetchTx = (txid) => (defaultFetch ??= fetchFrom(electrum()))(txid);
 import type { Network } from './bchmsg.ts';
 
 // Tested Nov 19, 2026: all of these store kind 10011 and answer `#i` lookups (damus was unreachable from our network).
@@ -64,9 +70,9 @@ export async function fetchIdentityList(pubkey: string, relays = DEFAULT_RELAYS,
 }
 
 /** Look up a Nostr identity and verify its BCH claims. */
-export async function discoverByPubkey(pubkey: string, network: Network = 'mainnet', relays = DEFAULT_RELAYS, timeoutMs?: number) {
+export async function discoverByPubkey(pubkey: string, network: Network = 'mainnet', relays = DEFAULT_RELAYS, timeoutMs?: number, fetchTx: FetchTx = defaultFetchTx) {
   const list = await fetchIdentityList(pubkey, relays, timeoutMs);
-  return { list, results: list ? verifyClaims(list, network) : [] };
+  return { list, results: list ? await verifyClaimsOnline(list, network, fetchTx) : [] };
 }
 
 /**
@@ -74,13 +80,15 @@ export async function discoverByPubkey(pubkey: string, network: Network = 'mainn
  * candidates; then each author's NEWEST list is fetched, because a user unlinks by publishing a list without
  * the claim, and an older copy that still has it must not count.
  */
-export async function discoverByAddress(address: string, network: Network = 'mainnet', relays = DEFAULT_RELAYS, timeoutMs?: number): Promise<ClaimResult[]> {
+export async function discoverByAddress(address: string, network: Network = 'mainnet', relays = DEFAULT_RELAYS, timeoutMs?: number, fetchTx: FetchTx = defaultFetchTx): Promise<ClaimResult[]> {
   const name = identityName(address, network);
   if (!name) throw new Error('Not a P2PKH Bitcoin Cash address');
   const hits = await query(relays, { kinds: [IDENTITY_KIND], '#i': [name] }, timeoutMs);
   // Spam-resistant: only authors whose hit already holds a VALID claim for this address go on. Anyone can publish
   // junk tags naming an address, but nobody can forge the BCH signature, so junk cannot crowd out a real link.
-  const authors = [...new Set(hits.filter((e) => verifyClaims(e, network).some((r) => r.ok && r.address && identityName(r.address, network) === name)).map((e) => e.pubkey))].slice(0, 50);
+  // signature claims are checked offline; on-chain claims are checked online only for the first few candidates
+  const plausible = (r: ClaimResult) => !!r.address && identityName(r.address, network) === name && (r.ok || r.proofType === 'tx');
+  const authors = [...new Set(hits.filter((e) => verifyClaims(e, network).some(plausible)).map((e) => e.pubkey))].slice(0, 50);
   if (!authors.length) return [];
   const lists = await query(relays, { kinds: [IDENTITY_KIND], authors }, timeoutMs);
   const out: ClaimResult[] = [];
@@ -88,7 +96,8 @@ export async function discoverByAddress(address: string, network: Network = 'mai
     const latest = newest([...lists, ...hits].filter((e) => e.pubkey === a && e.kind === IDENTITY_KIND));
     if (!latest) continue;
     const want = identityName(address, network);
-    out.push(...verifyClaims(latest, network).filter((r) => r.address && identityName(r.address, network) === want));
+    const results = await verifyClaimsOnline(latest, network, fetchTx);
+    out.push(...results.filter((r) => r.ok && r.address && identityName(r.address, network) === want));
   }
   return out;
 }

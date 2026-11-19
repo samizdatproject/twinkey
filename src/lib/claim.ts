@@ -8,6 +8,7 @@
 // other, neither key is revealed, and the two keys are different (one secp256k1 ECDSA, one BIP-340 Schnorr).
 import { nip19, type Event, type EventTemplate } from 'nostr-tools';
 import { verifyEventFresh } from './verify-event.ts';
+import { isTxProof, verifyTxProof, type FetchTx } from './txproof.ts';
 import { normalizeAddress, recoverAddress, stripPrefix, type Network } from './bchmsg.ts';
 
 export const IDENTITY_KIND = 10011; // NIP-39 "external identities" list (replaceable: newest wins)
@@ -25,6 +26,9 @@ export interface ClaimResult {
   eventId?: string;
   createdAt?: number;
   checks: Check[];
+  /** "signature" (Bitcoin Signed Message) or "tx" (on-chain commitment, needs verifyClaimsOnline) */
+  proofType?: 'signature' | 'tx';
+  proof?: string;
 }
 
 /** The `i` tag value for an address ("bch:qq…"), or undefined if the address is not a P2PKH cashaddr. */
@@ -102,14 +106,34 @@ export function verifyClaims(event: Event, network: Network = 'mainnet'): ClaimR
     const address = parsed && t[1] === identityName(parsed, network) ? parsed : undefined;
     checks.push({ name: 'Claimed value is a P2PKH Bitcoin Cash address in canonical form (bch:q…)', ok: !!address, detail: t[1] });
     const text = verificationText(event.pubkey);
+    if (isTxProof(t[2])) {
+      checks.push({ name: PENDING_TX, ok: false, detail: t[2] });
+      return { ok: false, pubkey: event.pubkey, npub, address, eventId: event.id, createdAt: event.created_at, checks, proofType: 'tx', proof: t[2] };
+    }
     const signer = address && typeof t[2] === 'string' ? recoverAddress(text, t[2], network) : undefined;
     checks.push({
       name: 'BCH signature over the NIP-39 text recovers to that address (the BCH key named this Nostr key)',
       ok: !!signer && signer === address,
       detail: signer ? `signed by ${signer}` : 'signature missing or malformed',
     });
-    return { ok: checks.every((c) => c.ok), pubkey: event.pubkey, npub, address, eventId: event.id, createdAt: event.created_at, checks };
+    return { ok: checks.every((c) => c.ok), pubkey: event.pubkey, npub, address, eventId: event.id, createdAt: event.created_at, checks, proofType: 'signature', proof: t[2] };
   });
+}
+
+const PENDING_TX = 'On-chain proof (needs an online check)';
+
+/**
+ * verifyClaims plus the on-chain proofs: fetches each "tx:" proof through `fetchTx` (any Electrum server; nothing is
+ * trusted, see txproof.ts) and replaces the pending check with the real result.
+ */
+export async function verifyClaimsOnline(event: Event, network: Network, fetchTx: FetchTx): Promise<ClaimResult[]> {
+  const results = verifyClaims(event, network);
+  return Promise.all(results.map(async (r) => {
+    if (r.proofType !== 'tx' || !r.address || !r.proof || r.checks.some((c) => c.name !== PENDING_TX && !c.ok)) return r;
+    const check = await verifyTxProof(r.proof, r.address, verificationText(event.pubkey), fetchTx);
+    const checks = r.checks.map((c) => (c.name === PENDING_TX ? check : c));
+    return { ...r, checks, ok: checks.every((c) => c.ok) };
+  }));
 }
 
 function safeNpub(hex: string): string {

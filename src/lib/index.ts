@@ -6,3 +6,5 @@ export * from './relays.ts';
 export * from './auth.ts';
 export * from './did.ts';
 export * from './verify-event.ts';
+export * from './electrum.ts';
+export * from './txproof.ts';
