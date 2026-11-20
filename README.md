@@ -158,4 +158,4 @@ an independent AI security review of the verifier. Disclosed here as for every s
 
 ## License
 
-MIT. `test/vendor/mainnet-js-signed.js` is from mainnet-js (MIT) via paytaca-app, used only in tests.
+MIT. `test/vendor/mainnet-js-signed.js` is from the mainnet-js npm package (MIT, see `test/vendor/MAINNET-JS-LICENSE`), used only in tests as the reference signer (the same mainnet-js code the Paytaca wallet uses).

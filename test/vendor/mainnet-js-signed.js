@@ -1,19 +1,7 @@
-// Copied from paytaca/paytaca-app src/vendor/mainnet-js/message/signed.js (mainnet-js, MIT, (c) 2020 mainnet-cash).
-// Used ONLY in tests, to check that TwinKey reads and writes signatures exactly like the Paytaca wallet.
-// Changes: import paths point at @bitauth/libauth.
-/*
- * Vendored from mainnet-js 3.1.7, https://github.com/mainnet-cash/mainnet-js
- * Copyright (c) 2020 mainnet-cash, MIT License, see src/vendor/mainnet-js/LICENSE
- * File: dist/module/message/signed.js of the npm package
- *
- * Why vendored: this file signs and verifies Bitcoin signed messages, which the app did with
- *   @psf/bch-js. Its bitcoinjs-message measured the message in characters rather than bytes, so
- *   signatures of messages with non-ASCII characters differ from the standard this file follows.
- *
- * Changes from the source: the libauth import names Paytaca's libauth 3 (bitauth-libauth-v3),
- * the source map comment is dropped, and this header is added.
- * The code below is otherwise verbatim.
- */
+// mainnet-js 3.1.7 (https://github.com/mainnet-cash/mainnet-js), MIT License, Copyright (c) 2020 mainnet-cash.
+// File dist/module/message/signed.js from the npm package. Used ONLY in tests, as an independent reference signer
+// (the same mainnet-js code the Paytaca wallet uses for Bitcoin signed messages). Change: hash160 is imported from
+// @bitauth/libauth instead of mainnet-js's own util, and the source map comment is dropped.
 import { assertSuccess, base64ToBin, bigIntToCompactUint, binToBase64, decodeCashAddress, encodeCashAddress, secp256k1, sha256, utf8ToBin, } from "@bitauth/libauth";
 import { hash160 } from "@bitauth/libauth";
 /**
