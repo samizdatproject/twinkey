@@ -13,12 +13,15 @@ custody.
 ## See a live example
 
 https://samizdatproject.github.io/twinkey/?q=npub1rqz5mdjmm3fkj829ue2gupgqx2kcxgt8p24teffetmqvls5fl2cqamr08g
-shows one Nostr key with two verified BCH links, checked live by your browser:
+shows one Nostr key with three verified BCH links, checked live by your browser:
 
-- a **signed-message** proof (demo key), and
-- an **on-chain** proof made with the **Selene** wallet over WizardConnect: commitment transaction
-  [1f765b72…895f](https://blockchair.com/bitcoin-cash/transaction/1f765b727ee92b10c4c9d2d08439126c5e33bd53634e53dd6dfacd818b00895f)
-  (its OP_RETURN is the NIP-39 line for that npub).
+- a **signed-message** proof (demo key),
+- an **on-chain** proof made with the **Selene** wallet over WizardConnect:
+  [1f765b72…895f](https://blockchair.com/bitcoin-cash/transaction/1f765b727ee92b10c4c9d2d08439126c5e33bd53634e53dd6dfacd818b00895f), and
+- an **on-chain** proof made with the **Paytaca** wallet over WizardConnect:
+  [cb153244…0059](https://blockchair.com/bitcoin-cash/transaction/cb153244fb413c21d63cec425842471d77935de5d683984970bbaec703520059).
+
+Each transaction's OP_RETURN is the NIP-39 line for that npub.
 
 A one-click **payment by identity** from Selene to the verified address:
 [d43469ee…96da](https://blockchair.com/bitcoin-cash/transaction/d43469ee9087e6ffb1c1c42d176ec42f46ad7852f6269ca4bb771562c09596da).
@@ -142,12 +145,11 @@ npm run build             # static site in dist/
   The demo app's "server" runs in the page for the static demo; `examples/auth-server.ts` is the same logic as a real
   server. WizardConnect has no sign-message action, hence the on-chain proof for those wallets (it costs the network
   fee and spends from one wallet address, which becomes the linked address).
-- **Wallets tested (Nov 19):** Selene over WizardConnect: link (on-chain proof) and payment both worked on mainnet.
-  Paytaca over WizardConnect: our test request stayed pending in the wallet; not yet working in our test. Electron
-  Cash's message format is covered by its own test vectors.
+- **Wallets tested on mainnet (Nov 19–20):** Selene over WizardConnect (link and payment) and Paytaca over
+  WizardConnect (link). Electron Cash's message format is covered by its own test vectors.
 - **Found in real-wallet testing and fixed:** WizardConnect requests must use the protocol's own encoding (raw
-  bigints broke them), and a wallet's reply can be lost after it broadcasts, so the page also watches the chain for
-  the commitment.
+  bigints broke them), a wallet's reply can be lost after it broadcasts (so the page also watches the chain for the
+  commitment), and busy wallets keep coins at high address indexes (so the page scans with the standard gap limit).
 
 ## How this was built
 
