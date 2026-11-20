@@ -121,7 +121,7 @@ npm run build             # static site in dist/
 ## Security notes
 
 - **Same format as the sponsor's wallet.** Tests sign with TwinKey and verify with Paytaca's signer (mainnet-js
-  `SignedMessage`, vendored from paytaca-app) and vice versa, and verify Electron Cash's published test vectors
+  `SignedMessage`, the signer Paytaca uses, from the mainnet-js npm package) and vice versa, and verify Electron Cash's published test vectors
   (compressed and uncompressed keys).
 - **Found during testing:** nostr-tools caches a successful signature check on the event object, and an object
   spread copies that cache, so `{...verifiedEvent, pubkey: other}` would have passed. Every verifier here checks a
