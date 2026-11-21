@@ -1,5 +1,7 @@
 # TwinKey
 
+[![tests](https://github.com/samizdatproject/twinkey/actions/workflows/test.yml/badge.svg)](https://github.com/samizdatproject/twinkey/actions/workflows/test.yml)
+
 **One identity, two keys you already own.** TwinKey links a Bitcoin Cash address and a Nostr key with two
 signatures, each key vouching for the other. The link lives on ordinary Nostr relays as a standard NIP-39 identity
 claim. Anyone can find it, any app can verify it, and you can log in with it. No account, no identity server, no
